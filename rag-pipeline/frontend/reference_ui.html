@@ -1,0 +1,535 @@
+
+
+Rag console light · HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Console</title>
+<style>
+  :root {
+    --white: #ffffff;
+    --surface: #f6f8fc;
+    --surface-2: #eef2f9;
+    --line: #e2e8f2;
+    --line-strong: #c9d3e3;
+    --navy: #0b2254;
+    --navy-deep: #081a42;
+    --navy-soft: #e8edf8;
+    --text: #0b1f3a;
+    --muted: #5a6880;
+    --faint: #8b97ab;
+    --ok: #2f7d5b;
+    --warn: #9a6a12;
+    --error: #b4432f;
+    --radius: 10px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+ 
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+ 
+  body {
+    background: var(--white);
+    color: var(--text);
+    font-family: "Inter", "Helvetica Neue", Arial, system-ui, -apple-system, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+ 
+  input[type="radio"],
+  input[type="file"] { display: none; }
+ 
+  .app {
+    display: grid;
+    grid-template-columns: 264px 1fr;
+    height: 100vh;
+  }
+ 
+  /* Sidebar */
+  .sidebar {
+    background: var(--white);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    padding: 28px 18px;
+    gap: 36px;
+    min-height: 0;
+  }
+ 
+  .brand {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--navy);
+    letter-spacing: -0.01em;
+    padding: 0 12px;
+  }
+  .brand span {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+ 
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+ 
+  .nav-item {
+    display: block;
+    padding: 11px 14px;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    min-height: 44px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .nav-item:hover { color: var(--navy); background: var(--surface); }
+ 
+  .sidebar-foot {
+    margin-top: auto;
+    font-size: 13px;
+    color: var(--faint);
+    border-top: 1px solid var(--line);
+    padding: 16px 12px 0;
+  }
+ 
+  #view-chat:checked ~ .app .nav-chat,
+  #view-upload:checked ~ .app .nav-upload {
+    color: var(--navy);
+    background: var(--navy-soft);
+    font-weight: 600;
+  }
+ 
+  /* Main */
+  main {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 0;
+    min-height: 0;
+    background: var(--white);
+  }
+ 
+  .view {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+ 
+  #view-chat:checked ~ .app .view-chat,
+  #view-upload:checked ~ .app .view-upload { display: flex; }
+ 
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 22px 48px;
+    border-bottom: 1px solid var(--line);
+    gap: 16px;
+  }
+ 
+  h1 { font-size: 22px; font-weight: 650; color: var(--navy); letter-spacing: -0.01em; }
+  h2 { font-size: 19px; font-weight: 650; color: var(--navy); letter-spacing: -0.005em; }
+ 
+  .meta { color: var(--muted); font-size: 14px; }
+ 
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--navy);
+  }
+ 
+  /* Chat */
+  .thread {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 40px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    background: var(--white);
+  }
+ 
+  .msg { width: 100%; max-width: 780px; margin: 0 auto; }
+ 
+  .role {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--faint);
+    margin-bottom: 8px;
+  }
+ 
+  .msg.user { display: flex; justify-content: flex-end; }
+  .msg.user .bubble {
+    background: var(--navy);
+    color: var(--white);
+    padding: 12px 18px;
+    border-radius: var(--radius);
+    max-width: 78%;
+  }
+ 
+  .msg.assistant p { color: var(--text); }
+  .msg.assistant p + p { margin-top: 12px; }
+ 
+  .sources {
+    margin-top: 18px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .sources-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+  .sources ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .sources code {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--navy);
+    background: var(--white);
+    border: 1px solid var(--line);
+    padding: 1px 7px;
+    border-radius: 4px;
+  }
+ 
+  .composer {
+    padding: 20px 48px 26px;
+    border-top: 1px solid var(--line);
+    background: var(--white);
+  }
+ 
+  .composer-box {
+    max-width: 780px;
+    margin: 0 auto;
+    background: var(--white);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 10px 10px 10px 18px;
+    box-shadow: 0 1px 2px rgba(11, 34, 84, 0.04);
+  }
+  .composer-box:focus-within { border-color: var(--navy); }
+ 
+  textarea {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    color: var(--text);
+    font: inherit;
+    resize: none;
+    min-height: 44px;
+    max-height: 200px;
+    padding-top: 8px;
+  }
+  textarea::placeholder { color: var(--faint); }
+ 
+  .btn {
+    font: inherit;
+    font-weight: 600;
+    font-size: 15px;
+    border: 1px solid var(--navy);
+    border-radius: 8px;
+    padding: 10px 20px;
+    min-height: 44px;
+    cursor: pointer;
+    background: var(--navy);
+    color: var(--white);
+    transition: background 0.15s ease;
+  }
+  .btn:hover { background: var(--navy-deep); }
+  .btn.secondary {
+    background: var(--white);
+    color: var(--navy);
+    border-color: var(--line-strong);
+  }
+  .btn.secondary:hover { background: var(--surface); }
+ 
+  .composer-note {
+    max-width: 780px;
+    margin: 10px auto 0;
+    font-size: 13px;
+    color: var(--faint);
+  }
+ 
+  /* Upload */
+  .upload-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 40px 48px;
+    max-width: 920px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+ 
+  .section-head p { color: var(--muted); margin-top: 6px; font-size: 16px; }
+ 
+  .dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    border: 1.5px dashed var(--line-strong);
+    border-radius: 14px;
+    padding: 56px 24px;
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .dropzone:hover,
+  .dropzone:focus-within { border-color: var(--navy); background: var(--navy-soft); }
+ 
+  .dropzone strong { font-size: 18px; font-weight: 650; color: var(--navy); }
+  .dropzone span { color: var(--muted); font-size: 15px; }
+  .dropzone .btn { margin-top: 14px; }
+  .formats { font-size: 13px !important; color: var(--faint) !important; }
+ 
+  .actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+ 
+  .table-wrap {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+ 
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td {
+    text-align: left;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--navy);
+    background: var(--surface);
+  }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--surface); }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  td.file { font-family: var(--mono); font-size: 14px; color: var(--navy); }
+ 
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--faint);
+  }
+  .status.ok { color: var(--ok); }
+  .status.ok::before { background: var(--ok); }
+  .status.processing { color: var(--warn); }
+  .status.processing::before { background: var(--warn); }
+  .status.failed { color: var(--error); }
+  .status.failed::before { background: var(--error); }
+ 
+  /* Responsive */
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: 100vh; }
+    .sidebar {
+      flex-direction: row;
+      align-items: center;
+      padding: 14px 20px;
+      gap: 18px;
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand span, .sidebar-foot { display: none; }
+    .nav { flex-direction: row; gap: 4px; }
+    main { height: auto; min-height: 0; }
+    .topbar, .thread, .composer, .upload-body { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+ 
+<input type="radio" name="view" id="view-chat" checked>
+<input type="radio" name="view" id="view-upload">
+ 
+<div class="app">
+ 
+  <aside class="sidebar">
+    <div class="brand">
+      RAG Console
+      <span>Document question answering</span>
+    </div>
+ 
+    <nav class="nav">
+      <label for="view-chat" class="nav-item nav-chat">Chat</label>
+      <label for="view-upload" class="nav-item nav-upload">Upload</label>
+    </nav>
+ 
+    <div class="sidebar-foot">14 documents &middot; 2,318 chunks</div>
+  </aside>
+ 
+  <main>
+ 
+    <!-- CHAT -->
+    <section class="view view-chat">
+      <header class="topbar">
+        <h1>Chat</h1>
+        <span class="meta">Collection: Company Policies</span>
+      </header>
+ 
+      <div class="thread">
+ 
+        <div class="msg user">
+          <div class="bubble">What does the 2024 leave policy say about carrying forward unused leave?</div>
+        </div>
+ 
+        <div class="msg assistant">
+          <div class="role">Assistant</div>
+          <p>Unused annual leave can be carried forward up to 15 days into the next calendar year. Any balance above that limit lapses on 31 March unless the manager approves an exception in writing.</p>
+          <p>Carried-forward leave must be used by the end of the first quarter. It is not paid out on resignation.</p>
+          <div class="sources">
+            <div class="sources-title">Sources</div>
+            <ul>
+              <li><code>leave_policy_2024.pdf</code> p. 7</li>
+              <li><code>hr_faq_v3.docx</code> section 4.2</li>
+            </ul>
+          </div>
+        </div>
+ 
+        <div class="msg user">
+          <div class="bubble">Does this apply to contract staff as well?</div>
+        </div>
+ 
+        <div class="msg assistant">
+          <div class="role">Assistant</div>
+          <p>The policy covers full-time employees only. Contract staff are governed by their individual agreements, which are not part of the indexed collection.</p>
+          <div class="sources">
+            <div class="sources-title">Sources</div>
+            <ul>
+              <li><code>leave_policy_2024.pdf</code> p. 2</li>
+            </ul>
+          </div>
+        </div>
+ 
+      </div>
+ 
+      <div class="composer">
+        <div class="composer-box">
+          <textarea rows="1" placeholder="Ask a question about your documents"></textarea>
+          <button class="btn" type="button">Send</button>
+        </div>
+        <p class="composer-note">Answers are generated only from indexed documents. Verify against the cited sources before acting on them.</p>
+      </div>
+    </section>
+ 
+    <!-- UPLOAD -->
+    <section class="view view-upload">
+      <header class="topbar">
+        <h1>Upload</h1>
+        <span class="meta">Add documents to the index</span>
+      </header>
+ 
+      <div class="upload-body">
+ 
+        <div class="section-head">
+          <h2>Add documents</h2>
+          <p>Files are split into chunks, embedded, and added to the collection.</p>
+        </div>
+ 
+        <label class="dropzone">
+          <strong>Drop files here or choose files</strong>
+          <span>Select one or more files from your computer</span>
+          <span class="formats">PDF, DOCX, TXT, MD, CSV &middot; up to 50 MB each</span>
+          <input type="file" multiple accept=".pdf,.docx,.txt,.md,.csv">
+          <span class="btn secondary">Browse files</span>
+        </label>
+ 
+        <div class="actions">
+          <span class="meta">No files selected</span>
+          <button class="btn" type="button">Index documents</button>
+        </div>
+ 
+        <div class="section-head">
+          <h2>Indexed documents</h2>
+        </div>
+ 
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th class="num">Chunks</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="file">leave_policy_2024.pdf</td>
+                <td>Oct 12, 2026</td>
+                <td class="num">184</td>
+                <td><span class="status ok">Indexed</span></td>
+              </tr>
+              <tr>
+                <td class="file">hr_faq_v3.docx</td>
+                <td>Oct 12, 2026</td>
+                <td class="num">96</td>
+                <td><span class="status ok">Indexed</span></td>
+              </tr>
+              <tr>
+                <td class="file">travel_reimbursement.pdf</td>
+                <td>Oct 15, 2026</td>
+                <td class="num">—</td>
+                <td><span class="status processing">Processing</span></td>
+              </tr>
+              <tr>
+                <td class="file">old_handbook_2019.pdf</td>
+                <td>Sep 30, 2026</td>
+                <td class="num">0</td>
+                <td><span class="status failed">Failed</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+ 
+      </div>
+    </section>
+ 
+  </main>
+</div>
+ 
+</body>
+</html>

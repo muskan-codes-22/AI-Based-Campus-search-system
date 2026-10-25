@@ -18,7 +18,7 @@ EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
 )
 NVIDIA_MODEL = os.getenv(
-    "NVIDIA_MODEL", "nvidia/nemotron-3-super-120b-a12b"
+    "NVIDIA_MODEL", "minimaxai/minimax-m3.1-flash"
 )
 
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "700"))

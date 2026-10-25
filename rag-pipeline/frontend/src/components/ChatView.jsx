@@ -1,135 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Trash2, Bot, CornerDownLeft, Code2, Check, Copy } from 'lucide-react';
+import {
+  Send,
+  Sparkles,
+  Trash2,
+  Bot,
+  Table2,
+  ClipboardList,
+  Code2,
+  Languages,
+  Mic,
+  Paperclip,
+  ArrowRight,
+} from 'lucide-react';
+import MarkdownMessage from './MarkdownMessage';
 import SourceCitation from './SourceCitation';
 
-function CodeBlock({ language, code }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="code-block-container">
-      <div className="code-block-header">
-        <span>{language || 'code'}</span>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="code-block-copy-btn"
-          title="Copy code snippet"
-        >
-          {copied ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <Check size={12} /> Copied
-            </span>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <Copy size={12} /> Copy
-            </span>
-          )}
-        </button>
-      </div>
-      <pre>
-        <code>{code}</code>
-      </pre>
-    </div>
-  );
-}
-
-function FormattedMessage({ content }) {
-  if (!content) return null;
-
-  // Extract code blocks: ```lang ... ```
-  const codeBlockRegex = /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g;
-  const parts = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({
-        type: 'text',
-        content: content.slice(lastIndex, match.index),
-      });
-    }
-    parts.push({
-      type: 'code',
-      language: match[1] || 'code',
-      content: match[2].trim(),
-    });
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < content.length) {
-    parts.push({
-      type: 'text',
-      content: content.slice(lastIndex),
-    });
-  }
-
-  const renderInline = (str) => {
-    // Strip leading Markdown headers like ### if any
-    const clean = str.replace(/^###+\s*/gm, '');
-    const tokens = clean.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-
-    return tokens.map((token, i) => {
-      if (token.startsWith('`') && token.endsWith('`') && token.length > 2) {
-        return (
-          <code key={i} className="inline-code">
-            {token.slice(1, -1)}
-          </code>
-        );
-      }
-      if (token.startsWith('**') && token.endsWith('**') && token.length > 4) {
-        return <strong key={i}>{token.slice(2, -2)}</strong>;
-      }
-      return token;
-    });
-  };
-
-  return (
-    <div className="bubble-body">
-      {parts.map((part, pIdx) => {
-        if (part.type === 'code') {
-          return (
-            <CodeBlock
-              key={pIdx}
-              language={part.language}
-              code={part.content}
-            />
-          );
-        }
-
-        const paragraphs = part.content.split('\n\n').filter(Boolean);
-        return paragraphs.map((para, idx) => {
-          const lines = para.split('\n').filter(Boolean);
-          const isList = lines.length > 1 && lines.every((line) => line.trim().startsWith('- ') || line.trim().startsWith('* '));
-
-          if (isList) {
-            return (
-              <ul key={`${pIdx}-${idx}`}>
-                {lines.map((line, lIdx) => (
-                  <li key={lIdx}>
-                    {renderInline(line.trim().replace(/^[-*]\s+/, ''))}
-                  </li>
-                ))}
-              </ul>
-            );
-          }
-
-          return (
-            <p key={`${pIdx}-${idx}`}>
-              {renderInline(para)}
-            </p>
-          );
-        });
-      })}
-    </div>
-  );
-}
 
 export default function ChatView({
   messages,
@@ -154,7 +39,7 @@ export default function ChatView({
     setInput(e.target.value);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
     }
   };
 
@@ -177,13 +62,15 @@ export default function ChatView({
     }
   };
 
-  const handlePromptChip = (chipText) => {
-    if (!input.trim()) {
-      setInput(chipText);
-    } else {
-      setInput((prev) => `${prev.trim()} (${chipText})`);
-    }
-    textareaRef.current?.focus();
+  const handleQuickPrompt = (promptText) => {
+    onSendMessage(promptText);
+  };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning, what are you studying today?';
+    if (hour < 17) return 'Good afternoon, what are you studying today?';
+    return 'Good evening, what are you studying today?';
   };
 
   return (
@@ -194,9 +81,9 @@ export default function ChatView({
           <span className="meta">Collection: {collectionName}</span>
         </div>
         <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span className="assistant-mode-badge" title="Answers are direct, natural, beginner-friendly, and cite indexed documents">
-            <Sparkles size={12} />
-            <span>Simple & Natural Mode</span>
+          <span className="assistant-mode-badge" title="Structured professional answers with Markdown, tables, code, and source citations">
+            <Sparkles size={13} />
+            <span>Academic & Professional Mode</span>
           </span>
           {messages.length > 0 && (
             <button
@@ -214,52 +101,58 @@ export default function ChatView({
 
       <div className="thread">
         {messages.length === 0 && !isLoading && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: 'var(--faint)',
-            textAlign: 'center',
-            padding: '40px 20px',
-            gap: '14px'
-          }}>
-            <Bot size={40} style={{ color: 'var(--navy)', opacity: 0.8 }} />
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--navy)' }}>
-              Campus AI Search & Assistant
-            </h3>
-            <p style={{ margin: 0, fontSize: '13.5px', maxWidth: '420px', lineHeight: 1.5, color: 'var(--muted)' }}>
-              Ask questions naturally in <strong>simple English</strong> or <strong>Hinglish</strong>. Answers are straightforward, beginner-friendly, and cited directly from your campus documents.
-            </p>
-            <div className="suggestion-chips-bar" style={{ justifyContent: 'center', marginTop: '6px' }}>
+          <div className="chat-hero-container">
+            <div className="chat-hero-header">
+              <h2 className="chat-hero-greeting">{getGreeting()}</h2>
+              <p className="chat-hero-subtitle">
+                Search, summarize, and understand your indexed campus documents with AI.
+              </p>
+            </div>
+
+            {/* 2x2 Grid of rounded suggestion cards */}
+            <div className="suggestion-cards-grid">
               <button
                 type="button"
-                className="suggestion-chip"
-                onClick={() => handlePromptChip('Explain simply')}
+                className="suggestion-action-card"
+                onClick={() => handleQuickPrompt('Compare Big-O, Big-Omega, and Big-Theta notations in a comparison table')}
               >
-                💡 Explain simply
+                <div className="card-icon-wrap teal">
+                  <Table2 size={24} color="#14B8A6" />
+                </div>
+                <div className="card-title">Compare in a table</div>
               </button>
+
               <button
                 type="button"
-                className="suggestion-chip"
-                onClick={() => handlePromptChip('Show a small code example')}
+                className="suggestion-action-card"
+                onClick={() => handleQuickPrompt('Give me a high-yield exam preparation summary of the key concepts')}
               >
-                💻 Give a code example
+                <div className="card-icon-wrap indigo">
+                  <ClipboardList size={24} color="#4F46E5" />
+                </div>
+                <div className="card-title">Exam preparation</div>
               </button>
+
               <button
                 type="button"
-                className="suggestion-chip"
-                onClick={() => handlePromptChip('Explain in Hinglish')}
+                className="suggestion-action-card"
+                onClick={() => handleQuickPrompt('Show a code example with runtime complexity and comments')}
               >
-                🇮🇳 In Hinglish
+                <div className="card-icon-wrap teal">
+                  <Code2 size={24} color="#14B8A6" />
+                </div>
+                <div className="card-title">Code example</div>
               </button>
+
               <button
                 type="button"
-                className="suggestion-chip"
-                onClick={() => handlePromptChip('What are the key points?')}
+                className="suggestion-action-card"
+                onClick={() => handleQuickPrompt('Explain the core concepts in simple Hinglish with examples')}
               >
-                ⚡ Key takeaways
+                <div className="card-icon-wrap indigo">
+                  <Languages size={24} color="#4F46E5" />
+                </div>
+                <div className="card-title">Ask in Hinglish</div>
               </button>
             </div>
           </div>
@@ -277,10 +170,10 @@ export default function ChatView({
           return (
             <div key={index} className="msg assistant">
               <div className="role">
-                <Bot size={14} />
-                <span>Assistant</span>
+                <Bot size={15} color="#4F46E5" />
+                <span>Campus AI</span>
               </div>
-              <FormattedMessage content={msg.content} />
+              <MarkdownMessage content={msg.content} />
               {msg.sources && msg.sources.length > 0 && (
                 <SourceCitation sources={msg.sources} />
               )}
@@ -291,7 +184,7 @@ export default function ChatView({
         {isLoading && (
           <div className="msg assistant">
             <div className="role">
-              <Sparkles size={14} />
+              <Sparkles size={15} color="#4F46E5" />
               <span>Analyzing documents...</span>
             </div>
             <div className="typing-dots">
@@ -305,66 +198,48 @@ export default function ChatView({
         <div ref={threadEndRef} />
       </div>
 
-      <div className="composer">
-        {messages.length > 0 && (
-          <div className="suggestion-chips-bar">
-            <button
-              type="button"
-              className="suggestion-chip"
-              disabled={isLoading}
-              onClick={() => handlePromptChip('Explain this simply')}
-            >
-              💡 Explain simply
-            </button>
-            <button
-              type="button"
-              className="suggestion-chip"
-              disabled={isLoading}
-              onClick={() => handlePromptChip('Show a small code example')}
-            >
-              💻 Code example
-            </button>
-            <button
-              type="button"
-              className="suggestion-chip"
-              disabled={isLoading}
-              onClick={() => handlePromptChip('Explain in Hinglish')}
-            >
-              🇮🇳 In Hinglish
-            </button>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="composer-box">
+      <div className="composer-wrapper">
+        <form onSubmit={handleSubmit} className="floating-composer-bar">
           <textarea
             ref={textareaRef}
             rows={1}
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything about your campus documents (Press Enter to send, Shift+Enter for new line)"
+            placeholder="Ask anything about your campus documents..."
             disabled={isLoading}
+            className="floating-composer-input"
           />
-          <div className="composer-actions">
+
+          <div className="floating-composer-actions">
             <button
-              className="btn"
+              type="button"
+              className="action-icon-btn"
+              title="Voice input"
+              onClick={() => {}}
+            >
+              <Mic size={18} />
+            </button>
+            <button
+              type="button"
+              className="action-icon-btn"
+              title="Attach document"
+              onClick={() => {}}
+            >
+              <Paperclip size={18} />
+            </button>
+            <button
+              className="send-btn-indigo"
               type="submit"
               disabled={isLoading || !input.trim()}
               title="Send message"
             >
-              <Send size={15} />
               <span>Send</span>
+              <ArrowRight size={15} />
             </button>
           </div>
         </form>
-        <div className="composer-note">
-          <span>Answers are direct & easy to understand, grounded in your indexed campus documents.</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-            <CornerDownLeft size={11} /> Enter to send
-          </span>
-        </div>
       </div>
     </section>
   );
 }
-

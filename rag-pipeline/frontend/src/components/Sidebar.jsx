@@ -1,15 +1,16 @@
 import React from 'react';
-import { MessageSquare, UploadCloud, Database } from 'lucide-react';
+import { GraduationCap, MessageSquare, FileText, History, UploadCloud } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onSelectTab, docCount = 0, chunkCount = 0 }) {
   return (
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-title">
-          <Database size={22} color="var(--navy)" />
-          <span>RAG Console</span>
+          <div className="brand-logo-wrap">
+            <GraduationCap size={22} color="#ffffff" />
+          </div>
+          <span className="brand-text">Campus AI</span>
         </div>
-        <span>Document question answering</span>
       </div>
 
       <nav className="nav" aria-label="Main Navigation">
@@ -26,6 +27,29 @@ export default function Sidebar({ activeTab, onSelectTab, docCount = 0, chunkCou
 
         <button
           type="button"
+          className={`nav-item ${activeTab === 'documents' ? 'active' : ''}`}
+          onClick={() => onSelectTab('documents')}
+        >
+          <div className="nav-item-content">
+            <FileText size={18} />
+            <span>Documents</span>
+          </div>
+          <span className="nav-badge">{docCount}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => onSelectTab('history')}
+        >
+          <div className="nav-item-content">
+            <History size={18} />
+            <span>History</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
           className={`nav-item ${activeTab === 'upload' ? 'active' : ''}`}
           onClick={() => onSelectTab('upload')}
         >
@@ -33,17 +57,15 @@ export default function Sidebar({ activeTab, onSelectTab, docCount = 0, chunkCou
             <UploadCloud size={18} />
             <span>Upload</span>
           </div>
-          <span className="nav-badge">{docCount}</span>
         </button>
       </nav>
 
       <div className="sidebar-foot">
-        <div className="status-indicator">
+        <div className="status-pill-card">
           <span className="status-dot-pulse" />
-          <span>Index live & ready</span>
-        </div>
-        <div>
-          {docCount} documents &middot; {chunkCount.toLocaleString()} chunks
+          <span className="status-pill-text">
+            Index ready, {docCount} documents, {chunkCount} chunks
+          </span>
         </div>
       </div>
     </aside>

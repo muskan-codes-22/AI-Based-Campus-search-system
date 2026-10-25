@@ -95,7 +95,7 @@ export default function App() {
       />
 
       <main>
-        {activeTab === 'chat' ? (
+        {activeTab === 'chat' && (
           <ChatView
             messages={messages}
             onSendMessage={handleSendMessage}
@@ -103,13 +103,49 @@ export default function App() {
             isLoading={isLoading}
             collectionName="PDF Knowledge Base"
           />
-        ) : (
+        )}
+
+        {(activeTab === 'upload' || activeTab === 'documents') && (
           <UploadView
             documents={documents}
             onIndexFiles={handleIndexFiles}
             onRemoveDocument={handleRemoveDocument}
             isIndexing={isIndexing}
           />
+        )}
+
+        {activeTab === 'history' && (
+          <section className="view view-history">
+            <header className="topbar">
+              <div className="topbar-left">
+                <h1>Chat History</h1>
+                <span className="meta">Saved queries and past academic sessions</span>
+              </div>
+            </header>
+            <div className="history-content">
+              {messages.length === 0 ? (
+                <div className="empty-history-placeholder">
+                  <p>No chat history in this session yet. Start chatting from the Chat tab!</p>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => setActiveTab('chat')}
+                  >
+                    Go to Chat
+                  </button>
+                </div>
+              ) : (
+                <div className="history-list">
+                  {messages.map((m, idx) => (
+                    <div key={idx} className={`history-card ${m.role}`}>
+                      <strong>{m.role === 'user' ? 'You' : 'Campus AI'}:</strong>
+                      <p>{m.content.slice(0, 180)}{m.content.length > 180 ? '...' : ''}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
         )}
       </main>
     </div>

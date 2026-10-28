@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 
 export default function SourceCitation({ sources }) {
   const [expanded, setExpanded] = useState(false);
@@ -7,17 +7,16 @@ export default function SourceCitation({ sources }) {
   if (!sources || sources.length === 0) return null;
 
   return (
-    <div className="sources">
+    <div className="sources-container">
       <div className="sources-header">
         <div className="sources-title">
-          <BookOpen size={13} />
+          <BookOpen size={14} />
           <span>Sources ({sources.length})</span>
         </div>
         {sources.some((s) => s.excerpt) && (
           <button
             type="button"
-            className="btn ghost sm"
-            style={{ padding: '2px 6px', height: 'auto', minHeight: 'unset' }}
+            className="btn ghost sm excerpt-toggle-btn"
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? (
@@ -33,7 +32,7 @@ export default function SourceCitation({ sources }) {
         )}
       </div>
 
-      <ul>
+      <ul className="sources-list">
         {sources.map((source, idx) => {
           const fileName = typeof source === 'string' ? source : source.file || source.filename;
           const page = typeof source === 'object' ? source.page : null;
@@ -41,8 +40,15 @@ export default function SourceCitation({ sources }) {
 
           return (
             <li key={idx} className="source-item">
-              <code>{fileName}</code>
-              {page && <span>{typeof page === 'number' ? `p. ${page}` : page}</span>}
+              <div className="source-badge">
+                <FileText size={12} className="source-icon" />
+                <span className="source-filename">{fileName}</span>
+                {page && (
+                  <span className="source-page-tag">
+                    {typeof page === 'number' ? `p. ${page}` : page}
+                  </span>
+                )}
+              </div>
               {expanded && excerpt && (
                 <div className="source-snippet">
                   &ldquo;{excerpt}&rdquo;

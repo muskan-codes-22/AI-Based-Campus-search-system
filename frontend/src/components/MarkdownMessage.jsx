@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { Copy, Check } from 'lucide-react';
 
 function CodeBlock({ language, code }) {
@@ -48,7 +49,7 @@ export default function MarkdownMessage({ content }) {
   return (
     <div className="markdown-message-root">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           // Code overrides: inline vs block
           pre({ children }) {
@@ -72,7 +73,7 @@ export default function MarkdownMessage({ content }) {
             );
           },
 
-          // Table wrapped in horizontally scrollable container, bordered, zebra rows, sticky-looking header
+          // Table wrapped in horizontally scrollable container
           table({ node, ...props }) {
             return (
               <div className="md-table-wrap">
@@ -81,7 +82,7 @@ export default function MarkdownMessage({ content }) {
             );
           },
 
-          // Headings h2 & h3
+          // Headings
           h2({ node, ...props }) {
             return <h2 className="md-h2" {...props} />;
           },
@@ -97,7 +98,17 @@ export default function MarkdownMessage({ content }) {
             return <ol className="md-ol" {...props} />;
           },
 
-          // Links (open in new tab with rel="noopener noreferrer")
+          // Paragraph
+          p({ node, ...props }) {
+            return <p className="md-p" {...props} />;
+          },
+
+          // Horizontal rule / dividers
+          hr({ node, ...props }) {
+            return <hr className="md-hr" {...props} />;
+          },
+
+          // Links (open in new tab)
           a({ node, href, children, ...props }) {
             return (
               <a

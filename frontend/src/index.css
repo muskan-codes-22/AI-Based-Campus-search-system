@@ -1444,3 +1444,199 @@ td.file {
 
 
 
+
+/* -------------------------------------------------------------------------
+   Source Citations & Badges
+------------------------------------------------------------------------- */
+.sources-container {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #E2E8F0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sources-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sources-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.02em;
+}
+
+.excerpt-toggle-btn {
+  padding: 3px 8px !important;
+  height: auto !important;
+  font-size: 11.5px !important;
+  color: #64748B !important;
+  border-radius: 6px !important;
+}
+
+.sources-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  width: fit-content;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: #334155;
+}
+
+.source-icon {
+  color: #6366F1;
+}
+
+.source-filename {
+  font-weight: 500;
+  color: #1E293B;
+}
+
+.source-page-tag {
+  background: #E0E7FF;
+  color: #4338CA;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 2px;
+}
+
+.source-snippet {
+  margin-top: 2px;
+  margin-left: 8px;
+  padding: 6px 10px;
+  background: #F8FAFC;
+  border-left: 2px solid #6366F1;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #475569;
+  font-style: italic;
+  border-radius: 0 4px 4px 0;
+}
+
+/* Enhanced Markdown elements */
+.md-p {
+  margin: 8px 0;
+  line-height: 1.65;
+}
+
+.md-hr {
+  border: none;
+  border-top: 1px dashed #CBD5E1;
+  margin: 18px 0;
+}
+
+/* Spinner animation and indexing progress banner */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-icon,
+.animate-spin {
+  animation: spin 0.9s linear infinite !important;
+  display: inline-block;
+  transform-origin: center center;
+}
+
+@keyframes progressIndeterminate {
+  0% {
+    left: -35%;
+    right: 100%;
+  }
+  60% {
+    left: 100%;
+    right: -90%;
+  }
+  100% {
+    left: 100%;
+    right: -90%;
+  }
+}
+
+.indexing-banner {
+  background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+  border: 1px solid #C7D2FE;
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.indexing-banner-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: #3730A3;
+}
+
+.indexing-banner-timer {
+  background: #E0E7FF;
+  color: #4338CA;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-family: var(--mono);
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.indexing-progress-bar {
+  height: 6px;
+  background: #E0E7FF;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.indexing-progress-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #4F46E5 0%, #7C3AED 100%);
+  border-radius: 999px;
+  animation: progressIndeterminate 1.6s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
+.indexing-banner-note {
+  margin: 0;
+  font-size: 12px;
+  color: #4F46E5;
+  line-height: 1.4;
+}

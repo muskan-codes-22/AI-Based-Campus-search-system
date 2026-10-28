@@ -23,13 +23,13 @@ NVIDIA_MODEL = os.getenv(
     "NVIDIA_MODEL", "nvidia/nemotron-3.5-bolt-e4b"
 )
 
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "700"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
-VECTOR_TOP_K = int(os.getenv("VECTOR_TOP_K", "6"))
-BM25_TOP_K = int(os.getenv("BM25_TOP_K", "6"))
-FINAL_TOP_K = int(os.getenv("FINAL_TOP_K", "5"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
+VECTOR_TOP_K = int(os.getenv("VECTOR_TOP_K", "60"))
+BM25_TOP_K = int(os.getenv("BM25_TOP_K", "80"))
+FINAL_TOP_K = int(os.getenv("FINAL_TOP_K", "15"))
 RRF_K = int(os.getenv("RRF_K", "60"))
-MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "14000"))
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "25000"))
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CHROMA_DIR.mkdir(parents=True, exist_ok=True)

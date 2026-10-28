@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   UploadCloud,
   FileText,
@@ -45,7 +45,23 @@ export default function UploadView({
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropzone, setShowDropzone] = useState(activeTab === 'upload');
+  const [indexingElapsed, setIndexingElapsed] = useState(0);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    let interval;
+    if (isIndexing) {
+      setIndexingElapsed(0);
+      interval = setInterval(() => {
+        setIndexingElapsed((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setIndexingElapsed(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isIndexing]);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -185,10 +201,27 @@ export default function UploadView({
               </span>
             </label>
 
+            {/* Active Indexing Progress Banner */}
+            {isIndexing && (
+              <div className="indexing-banner">
+                <div className="indexing-banner-header">
+                  <Loader2 size={16} className="spin-icon" />
+                  <span>Parsing, splitting into chunks & generating neural embeddings...</span>
+                  <span className="indexing-banner-timer">{indexingElapsed}s</span>
+                </div>
+                <div className="indexing-progress-bar">
+                  <div className="indexing-progress-fill" />
+                </div>
+                <p className="indexing-banner-note">
+                  Large files (5–10+ MB) produce hundreds of chunks embedded via sentence-transformers on CPU. This typically takes 30–60 seconds—please keep this page open!
+                </p>
+              </div>
+            )}
+
             {selectedFiles.length > 0 && (
               <div className="staged-files">
                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Pending Upload ({selectedFiles.length})
+                  {isIndexing ? 'Indexing Files in Progress...' : `Pending Upload (${selectedFiles.length})`}
                 </div>
                 {selectedFiles.map((f) => (
                   <div key={f.name} className="staged-file-item">
@@ -197,17 +230,24 @@ export default function UploadView({
                       <span>{f.name}</span>
                       <span className="staged-file-size">({formatFileSize(f.size)})</span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn ghost sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        removeSelectedFile(f.name);
-                      }}
-                      title="Remove from list"
-                    >
-                      <X size={14} />
-                    </button>
+                    {isIndexing ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#4F46E5', fontWeight: 500 }}>
+                        <Loader2 size={13} className="spin-icon" />
+                        <span>Embedding...</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          removeSelectedFile(f.name);
+                        }}
+                        title="Remove from list"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -215,7 +255,9 @@ export default function UploadView({
 
             <div className="actions">
               <span className="meta">
-                {selectedFiles.length === 0
+                {isIndexing
+                  ? `Processing ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}...`
+                  : selectedFiles.length === 0
                   ? 'No files selected'
                   : `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} ready to index`}
               </span>
@@ -227,8 +269,8 @@ export default function UploadView({
               >
                 {isIndexing ? (
                   <>
-                    <Loader2 size={16} className="spin-icon" style={{ animation: 'spin 1s linear infinite' }} />
-                    <span>Indexing documents...</span>
+                    <Loader2 size={16} className="spin-icon" />
+                    <span>Indexing documents ({indexingElapsed}s)...</span>
                   </>
                 ) : (
                   <>

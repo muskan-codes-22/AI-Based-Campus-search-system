@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import List, Tuple
 
@@ -66,28 +67,62 @@ def _load_docx(path: Path) -> List[Document]:
     doc = docx.Document(str(path))
     sections: List[Document] = []
     current_text_blocks = []
+    current_section_title = "Overview"
     section_num = 1
 
-    # Extract paragraphs and inline headings
+    def is_heading(p):
+        txt = p.text.strip()
+        if not txt:
+            return False, ""
+        if p.style.name.startswith("Heading"):
+            return True, txt
+        is_bold = any(r.bold for r in p.runs if r.text.strip()) if p.runs else False
+        if is_bold and len(txt) <= 120:
+            if re.match(r"^(?:[A-Z]\.|\bSection\b|\bPart\b|\bUnit\b|\bModule\b|\bChapter\b|\bQuestion Bank\b)", txt, re.IGNORECASE):
+                return True, txt
+            if len(txt) <= 50 and not re.match(r"^Q\d+[\.:\s]", txt):
+                return True, txt
+        return False, ""
+
+    def enrich_title(title_text: str) -> str:
+        enriched = title_text
+        if re.search(r"short\s+question", title_text, re.IGNORECASE):
+            enriched += " [Short Answer / 2 Marks / Objective / MCQs]"
+        elif re.search(r"long\s+question", title_text, re.IGNORECASE):
+            enriched += " [Long Answer / 10 Marks / Descriptive / Analytical]"
+        return enriched
+
     for p in doc.paragraphs:
         txt = p.text.strip()
         if not txt:
             continue
-        # If heading style, start a new logical section/page
-        if p.style.name.startswith("Heading") and current_text_blocks:
+        is_h, h_txt = is_heading(p)
+        if is_h and current_text_blocks:
             full_text = "\n\n".join(current_text_blocks)
             sections.append(
                 Document(
                     page_content=full_text,
-                    metadata={"page_number": section_num, "source_filename": path.name},
+                    metadata={"page_number": section_num, "section": current_section_title, "source_filename": path.name},
                 )
             )
             section_num += 1
-            current_text_blocks = [f"## {txt}"]
-        elif p.style.name.startswith("Heading"):
-            current_text_blocks.append(f"## {txt}")
+            current_section_title = enrich_title(h_txt)
+            current_text_blocks = [f"## {current_section_title}"]
+        elif is_h:
+            current_section_title = enrich_title(h_txt)
+            current_text_blocks.append(f"## {current_section_title}")
         else:
             current_text_blocks.append(txt)
+
+    if current_text_blocks:
+        full_text = "\n\n".join(current_text_blocks)
+        sections.append(
+            Document(
+                page_content=full_text,
+                metadata={"page_number": section_num, "section": current_section_title, "source_filename": path.name},
+            )
+        )
+        section_num += 1
 
     # Extract tables as formatted Markdown
     for table_idx, table in enumerate(doc.tables, start=1):
@@ -107,16 +142,13 @@ def _load_docx(path: Path) -> List[Document]:
                 md_table_lines.append(f"| {' | '.join(row)} |")
 
             table_md = "\n".join(md_table_lines)
-            current_text_blocks.append(f"\n[Table {table_idx}]\n{table_md}\n")
-
-    if current_text_blocks:
-        full_text = "\n\n".join(current_text_blocks)
-        sections.append(
-            Document(
-                page_content=full_text,
-                metadata={"page_number": section_num, "source_filename": path.name},
+            sections.append(
+                Document(
+                    page_content=f"### Table {table_idx} (from {path.name})\n\n{table_md}",
+                    metadata={"page_number": section_num, "section": f"Table {table_idx}", "source_filename": path.name},
+                )
             )
-        )
+            section_num += 1
 
     return sections
 
@@ -132,30 +164,46 @@ def _load_pptx(path: Path) -> List[Document]:
         slide_lines = []
         slide_title = None
 
-        # Extract shapes & text frames
         for shape in slide.shapes:
             if shape.has_text_frame:
                 for paragraph in shape.text_frame.paragraphs:
                     line = paragraph.text.strip()
                     if line:
-                        if not slide_title and shape == slide.shapes.title:
+                        if not slide_title:
                             slide_title = line
-                            slide_lines.append(f"### Slide {slide_idx}: {slide_title}")
-                        else:
-                            slide_lines.append(f"- {line}")
+                        slide_lines.append(line)
 
-        # Extract speaker notes if available
-        if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
-            notes = slide.notes_slide.notes_text_frame.text.strip()
-            if notes:
-                slide_lines.append(f"\n[Presenter Notes: {notes}]")
+            if shape.has_table:
+                table = shape.table
+                table_lines = []
+                for row in table.rows:
+                    row_cells = [c.text.strip().replace("\n", " ") for c in row.cells]
+                    table_lines.append(f"| {' | '.join(row_cells)} |")
+                if table_lines:
+                    slide_lines.append("\n" + "\n".join(table_lines) + "\n")
 
-        content = "\n".join(slide_lines).strip()
-        if content:
+        # Slide presenter notes
+        notes_text = ""
+        try:
+            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                notes_text = slide.notes_slide.notes_text_frame.text.strip()
+        except Exception:
+            pass
+
+        full_content = "\n".join(slide_lines)
+        if notes_text:
+            full_content += f"\n\nPresenter Notes:\n{notes_text}"
+
+        if full_content.strip():
+            header = f"## Slide {slide_idx}: {slide_title or 'Untitled Slide'}\n\n"
             slides_docs.append(
                 Document(
-                    page_content=content,
-                    metadata={"page_number": slide_idx, "source_filename": path.name},
+                    page_content=header + full_content,
+                    metadata={
+                        "page_number": slide_idx,
+                        "slide_title": slide_title or f"Slide {slide_idx}",
+                        "source_filename": path.name,
+                    },
                 )
             )
 
@@ -163,7 +211,7 @@ def _load_pptx(path: Path) -> List[Document]:
 
 
 def _load_excel(path: Path) -> List[Document]:
-    """Extract sheets from Excel files (.xlsx, .xls) as Markdown tables."""
+    """Extract each Excel worksheet as a separate markdown table document."""
     import pandas as pd
 
     excel_file = pd.ExcelFile(str(path))
@@ -171,7 +219,6 @@ def _load_excel(path: Path) -> List[Document]:
 
     for sheet_idx, sheet_name in enumerate(excel_file.sheet_names, start=1):
         df = pd.read_excel(excel_file, sheet_name=sheet_name)
-        # Drop completely empty rows and columns
         df = df.dropna(how="all").dropna(axis=1, how="all")
         if df.empty:
             continue
@@ -254,18 +301,17 @@ def load_documents_from_file(path: Path) -> List[Document]:
     elif ext in {".txt", ".md"}:
         return _load_text(path)
     else:
-        logger.warning(f"Unsupported file format: {path.suffix}")
-        return []
+        raise ValueError(f"Unsupported document format: {path.suffix}")
 
 
 # ---------------------------------------------------------------------------
-# Universal Ingest Engine
+# Ingestion Orchestrator
 # ---------------------------------------------------------------------------
 
 def ingest_file(path: Path, store) -> Tuple[int, str]:
     """
-    Ingest any supported document (PDF, Word, PPTX, Excel, CSV, Text) into Chroma.
-    Tracks file hashes for automatic incremental change detection.
+    Ingest a single file with format-specific parsing, content hashing,
+    and structured chunking.
     """
     if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         return 0, f"unsupported extension: {path.suffix}"
@@ -275,10 +321,6 @@ def ingest_file(path: Path, store) -> Tuple[int, str]:
 
     existing = store.get(where={"source_id": source_id}, include=["metadatas"])
     old_metadata = existing.get("metadatas") or []
-
-    if old_metadata and all(m.get("file_hash") == file_hash for m in old_metadata):
-        logger.info(f"[skip] Unchanged: {path.name}")
-        return len(old_metadata), "unchanged"
 
     # Remove old chunks if this document was previously indexed
     if old_metadata:
@@ -302,10 +344,20 @@ def ingest_file(path: Path, store) -> Tuple[int, str]:
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
         add_start_index=True,
-        separators=["\n\n", "\n", ". ", " ", ""],
+        separators=["\n\nQ", "\n\n", "\n", ". ", " ", ""],
     )
-    chunks = splitter.split_documents(pages)
-    chunks = [c for c in chunks if c.page_content.strip()]
+    raw_chunks = splitter.split_documents(pages)
+    
+    chunks = []
+    for c in raw_chunks:
+        content = c.page_content.strip()
+        if not content:
+            continue
+        sec = c.metadata.get("section")
+        if sec and not content.startswith(("#", "[")):
+            content = f"[{sec}]\n{content}"
+            c.page_content = content
+        chunks.append(c)
 
     if not chunks:
         logger.warning(f"[skip] No non-empty chunks in {path.name}")

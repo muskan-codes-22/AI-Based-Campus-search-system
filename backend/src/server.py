@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
@@ -171,10 +172,68 @@ def list_documents():
     return list(documents_map.values())
 
 
-def _extract_source_previews(docs) -> List[dict]:
+def _compute_doc_attribution(doc_text: str, answer_text: str) -> int:
+    """Score how strongly a retrieved document actually contributed to the generated answer."""
+    ans_clean = answer_text.lower()
+    doc_clean = doc_text.lower()
+
+    stopwords = {
+        "this", "that", "with", "from", "have", "what", "which", "when", "where",
+        "your", "about", "some", "than", "will", "would", "could", "should", "their",
+        "there", "these", "those", "other", "into", "also", "only", "then", "been",
+        "select", "choose", "correct", "option", "following", "questions", "answer",
+        "multiple", "choice", "data", "based", "short", "long"
+    }
+    ans_words = set(re.findall(r"[a-zA-Z0-9]{4,}", ans_clean)) - stopwords
+    doc_words = set(re.findall(r"[a-zA-Z0-9]{4,}", doc_clean)) - stopwords
+    common_words = ans_words.intersection(doc_words)
+
+    # 3-word phrase matching
+    ans_tokens = re.findall(r"\b\w+\b", ans_clean)
+    ans_trigrams = set(" ".join(ans_tokens[i:i+3]) for i in range(len(ans_tokens) - 2))
+    doc_tokens = re.findall(r"\b\w+\b", doc_clean)
+    doc_trigrams = set(" ".join(doc_tokens[i:i+3]) for i in range(len(doc_tokens) - 2))
+    common_trigrams = ans_trigrams.intersection(doc_trigrams)
+
+    return len(common_words) + 5 * len(common_trigrams)
+
+
+def _extract_source_previews(docs, answer: Optional[str] = None) -> List[dict]:
+    """
+    Extract source previews, strictly filtering out noisy documents so that
+    only documents actually used or cited in the answer are shown to the user.
+    """
+    if not docs:
+        return []
+
+    target_docs = docs
+    if answer and answer.strip():
+        ans_clean = answer.lower()
+        scored_docs = []
+        for doc in docs:
+            fn = doc.metadata.get("source_filename", "").lower()
+            score = _compute_doc_attribution(doc.page_content, answer)
+            # If the filename was explicitly cited in the answer, grant high score
+            if fn and fn in ans_clean:
+                score += 50
+            scored_docs.append((doc, score))
+
+        if scored_docs:
+            max_score = max(score for _, score in scored_docs)
+            if "not found in the indexed material" in ans_clean and len(ans_clean.strip()) < 200:
+                target_docs = []
+            elif max_score >= 10:
+                # Keep only docs that have meaningful contribution (at least 35% of peak score)
+                min_threshold = max(8, int(max_score * 0.35))
+                target_docs = [doc for doc, score in scored_docs if score >= min_threshold]
+            elif max_score >= 5:
+                target_docs = [doc for doc, score in scored_docs if score >= 5]
+            else:
+                target_docs = []
+
     sources = []
     seen = set()
-    for doc in docs:
+    for doc in target_docs:
         filename = doc.metadata.get("source_filename", "Document")
         page = doc.metadata.get("page_number", 1)
         key = (filename, page)
@@ -188,7 +247,7 @@ def _extract_source_previews(docs) -> List[dict]:
             "page": page,
             "excerpt": preview,
         })
-    return sources
+    return sources[:6]
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -221,8 +280,6 @@ def chat_endpoint(request: ChatRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {exc}")
 
-    sources = _extract_source_previews(docs)
-
     try:
         answer = answer_question(
             llm,
@@ -234,6 +291,8 @@ def chat_endpoint(request: ChatRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Generation error: {exc}")
 
+    sources = _extract_source_previews(docs, answer=answer)
+
     # Cache successful answer
     query_cache[cache_key] = {"answer": answer, "sources": sources}
 
@@ -244,7 +303,7 @@ def chat_endpoint(request: ChatRequest):
 async def chat_stream_endpoint(request: ChatRequest):
     """
     Server-Sent Events (SSE) streaming endpoint.
-    Yields sources JSON event first, then streams token events in real time.
+    Streams token events in real time, then emits grounded sources upon completion.
     """
     question = request.question.strip()
     if not question:
@@ -269,20 +328,16 @@ async def chat_stream_endpoint(request: ChatRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Retrieval error: {exc}")
 
-    sources = _extract_source_previews(docs)
-
     async def event_generator():
-        # 1. Send sources immediately
-        yield f"event: sources\ndata: {json.dumps(sources)}\n\n"
-
-        # 2. Check cache
+        # 1. Check cache
         if cache_key in query_cache:
-            cached_answer = query_cache[cache_key]["answer"]
-            yield f"event: token\ndata: {json.dumps({'delta': cached_answer})}\n\n"
+            cached_data = query_cache[cache_key]
+            yield f"event: sources\ndata: {json.dumps(cached_data['sources'])}\n\n"
+            yield f"event: token\ndata: {json.dumps({'delta': cached_data['answer']})}\n\n"
             yield "event: done\ndata: {}\n\n"
             return
 
-        # 3. Stream generated tokens
+        # 2. Stream generated tokens
         accumulated_chunks = []
         try:
             async for token in stream_answer_question(
@@ -300,12 +355,16 @@ async def chat_stream_endpoint(request: ChatRequest):
             yield f"event: token\ndata: {json.dumps({'delta': err_msg})}\n\n"
 
         full_answer = "".join(accumulated_chunks).strip()
+        # 3. Grounded source attribution: filter only the sources used in the answer
+        grounded_sources = _extract_source_previews(docs, answer=full_answer)
+        yield f"event: sources\ndata: {json.dumps(grounded_sources)}\n\n"
+
         if full_answer:
-            query_cache[cache_key] = {"answer": full_answer, "sources": sources}
+            query_cache[cache_key] = {"answer": full_answer, "sources": grounded_sources}
             try:
                 session_id = request.session_id or "default"
                 add_message(session_id, "user", question)
-                add_message(session_id, "assistant", full_answer, sources)
+                add_message(session_id, "assistant", full_answer, grounded_sources)
             except Exception as exc:
                 logger.warning(f"Failed to record stream message: {exc}")
 

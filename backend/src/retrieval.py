@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 
 from langchain_core.documents import Document
@@ -12,7 +13,7 @@ except ImportError:
 
 
 def load_all_indexed_documents(store) -> list[Document]:
-    """Load indexed text into memory to build BM25 for this simple starter."""
+    """Load indexed text into memory to build BM25 with filename/source metadata enrichment."""
     result = store.get(include=["documents", "metadatas"])
     documents = result.get("documents") or []
     metadatas = result.get("metadatas") or []
@@ -20,7 +21,12 @@ def load_all_indexed_documents(store) -> list[Document]:
     output = []
     for text, metadata in zip(documents, metadatas):
         if text and text.strip():
-            output.append(Document(page_content=text, metadata=metadata or {}))
+            meta = metadata or {}
+            fn = meta.get("source_filename", "")
+            # Prepend filename and source tokens so queries mentioning "resume", "question bank",
+            # "handbook", "lecture" or specific filenames directly match on BM25 keyword search
+            enriched_text = f"Document: {fn}\nSource: {fn}\n{text}"
+            output.append(Document(page_content=enriched_text, metadata=meta))
     return output
 
 
@@ -37,7 +43,10 @@ def _doc_key(doc: Document) -> str:
 
 
 def reciprocal_rank_fusion(
-    ranked_lists: list[list[Document]], rrf_k: int = RRF_K
+    ranked_lists: list[list[Document]],
+    rrf_k: int = RRF_K,
+    max_per_source: int = 5,
+    final_k: int = FINAL_TOP_K,
 ) -> list[Document]:
     scores = defaultdict(float)
     unique_docs = {}
@@ -50,10 +59,43 @@ def reciprocal_rank_fusion(
                 continue
             seen_in_list.add(key)
             scores[key] += 1.0 / (rrf_k + rank)
-            unique_docs[key] = doc
+
+            # Strip the temporary enriched prefix if present to pass clean context to LLM
+            raw_doc = doc
+            if doc.page_content.startswith("Document: "):
+                lines = doc.page_content.split("\n", 2)
+                clean_text = lines[2] if len(lines) > 2 else doc.page_content
+                raw_doc = Document(page_content=clean_text, metadata=doc.metadata)
+
+            unique_docs[key] = raw_doc
 
     ordered_keys = sorted(scores, key=scores.get, reverse=True)
-    return [unique_docs[key] for key in ordered_keys]
+
+    # Source diversity: prevent a single large multi-page file (like a 700-page handbook) from monopolizing all slots
+    result = []
+    source_counts = defaultdict(int)
+    overflow = []
+
+    for key in ordered_keys:
+        doc = unique_docs[key]
+        src = doc.metadata.get("source_filename", "unknown")
+        if source_counts[src] < max_per_source:
+            result.append(doc)
+            source_counts[src] += 1
+        else:
+            overflow.append(doc)
+
+    # Fill remaining capacity from overflow if needed
+    if len(result) < final_k:
+        result.extend(overflow[: final_k - len(result)])
+
+    return result[:final_k]
+
+
+def clean_bm25_tokenizer(text: str) -> list[str]:
+    """Clean tokenizer stripping punctuation, parentheses, and possessives like 's."""
+    cleaned = re.sub(r"'s\b", "", text.lower())
+    return re.findall(r"[a-z0-9]+", cleaned)
 
 
 class HybridRetriever:
@@ -68,7 +110,7 @@ class HybridRetriever:
         all_docs = load_all_indexed_documents(self.store)
         self.doc_count = len(all_docs)
         if all_docs:
-            self.bm25 = BM25Retriever.from_documents(all_docs)
+            self.bm25 = BM25Retriever.from_documents(all_docs, preprocess_func=clean_bm25_tokenizer)
             self.bm25.k = BM25_TOP_K
         else:
             self.bm25 = None
@@ -85,5 +127,5 @@ class HybridRetriever:
 
         keyword_results = self.bm25.invoke(question)
         vector_results = self.vector_retriever.invoke(question)
-        fused = reciprocal_rank_fusion([keyword_results, vector_results])
-        return fused[:FINAL_TOP_K]
+        fused = reciprocal_rank_fusion([keyword_results, vector_results], max_per_source=5, final_k=FINAL_TOP_K)
+        return fused

@@ -3,7 +3,7 @@ import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import UploadView from './components/UploadView';
 import LandingPage from './LandingPage';
-import { askQuestion, uploadFiles, fetchDocuments, deleteDocument } from './api';
+import { askQuestionStream, uploadFiles, fetchDocuments, deleteDocument } from './api';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('landing');
@@ -35,28 +35,51 @@ export default function App() {
   const handleSendMessage = async (text, modeOverride) => {
     const chosenMode = modeOverride || answerMode;
     const userMsg = { role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    const historySnapshot = [...messages];
+
+    // Append user message and create an empty assistant message ready to receive streaming tokens
+    setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', sources: [] }]);
     setIsLoading(true);
 
     try {
-      const response = await askQuestion(text, messages, chosenMode);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: response.answer,
-          sources: response.sources || [],
+      await askQuestionStream(
+        text,
+        historySnapshot,
+        chosenMode,
+        (sources) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === 'assistant') {
+              updated[updated.length - 1] = { ...last, sources };
+            }
+            return updated;
+          });
         },
-      ]);
+        (delta) => {
+          setIsLoading(false);
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === 'assistant') {
+              updated[updated.length - 1] = { ...last, content: last.content + delta };
+            }
+            return updated;
+          });
+        }
+      );
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `Error communicating with backend: ${err.message}`,
-          sources: [],
-        },
-      ]);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === 'assistant') {
+          updated[updated.length - 1] = {
+            ...last,
+            content: last.content || Error communicating with backend: ,
+          };
+        }
+        return updated;
+      });
     } finally {
       setIsLoading(false);
     }

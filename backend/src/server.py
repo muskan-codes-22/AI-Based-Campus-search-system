@@ -1,25 +1,34 @@
 import datetime
+import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 
+from cachetools import TTLCache
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 try:
     from .config import DATA_DIR, COLLECTION_NAME, NVIDIA_MODEL
     from .vector_store import get_vector_store
     from .retrieval import HybridRetriever
-    from .generation import create_llm, answer_question, ALLOWED_MODES
-    from .ingest import ingest_pdf, delete_document_from_store
+    from .generation import create_llm, answer_question, stream_answer_question, ALLOWED_MODES
+    from .ingest import ingest_file, delete_document_from_store, SUPPORTED_EXTENSIONS
 except ImportError:
     from config import DATA_DIR, COLLECTION_NAME, NVIDIA_MODEL
     from vector_store import get_vector_store
     from retrieval import HybridRetriever
-    from generation import create_llm, answer_question, ALLOWED_MODES
-    from ingest import ingest_pdf, delete_document_from_store
+    from generation import create_llm, answer_question, stream_answer_question, ALLOWED_MODES
+    from ingest import ingest_file, delete_document_from_store, SUPPORTED_EXTENSIONS
+
+logger = logging.getLogger(__name__)
+
+# In-memory query cache: up to 250 items, cached for 1 hour (3600s)
+query_cache = TTLCache(maxsize=250, ttl=3600)
 
 
 class ChatRequest(BaseModel):
@@ -43,9 +52,9 @@ async def lifespan(app: FastAPI):
     print("[startup] Initializing LLM...")
     try:
         llm = create_llm()
-        print("[startup] LLM initialized successfully.")
+        print(f"[startup] LLM initialized successfully with model: {NVIDIA_MODEL}")
     except Exception as exc:
-        print(f"[startup warning] LLM initialization deferred or failed: {exc}")
+        print(f"[startup warning] LLM initialization deferred: {exc}")
         llm = None
 
     app.state.store = store
@@ -58,13 +67,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="RAG Pipeline API",
-    description="FastAPI Backend for Document Question Answering and Indexing",
-    version="1.0.0",
+    title="Campus Multimodal RAG API",
+    description="Multimodal College Search & Exam Assistant API with Hybrid Search and Fast Streaming",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
-# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -76,11 +84,14 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health_check():
+    store = app.state.store
     has_llm = app.state.llm is not None
     return {
         "status": "healthy",
         "llm_ready": has_llm,
+        "model": NVIDIA_MODEL,
         "collection": COLLECTION_NAME,
+        "supported_extensions": list(SUPPORTED_EXTENSIONS),
     }
 
 
@@ -92,7 +103,6 @@ def get_stats():
         metadatas = data.get("metadatas") or []
         chunk_count = len(metadatas)
 
-        # Unique document files
         filenames = set()
         for meta in metadatas:
             fn = meta.get("source_filename")
@@ -101,7 +111,7 @@ def get_stats():
 
         doc_count = len(filenames)
     except Exception as exc:
-        print(f"[error] Could not calculate stats: {exc}")
+        logger.error(f"Could not calculate stats: {exc}")
         doc_count = 0
         chunk_count = 0
 
@@ -135,7 +145,7 @@ def list_documents():
                 }
             documents_map[fn]["chunks"] += 1
     except Exception as exc:
-        print(f"[error] Could not load document metadatas from store: {exc}")
+        logger.error(f"Could not load document metadatas from store: {exc}")
 
     # Cross-reference with files on disk in DATA_DIR
     for file_path in DATA_DIR.glob("*.*"):
@@ -143,6 +153,7 @@ def list_documents():
             fn = file_path.name
             mtime = datetime.datetime.fromtimestamp(file_path.stat().st_mtime)
             formatted_date = mtime.strftime("%b %d, %Y")
+            is_supported = file_path.suffix.lower() in SUPPORTED_EXTENSIONS
 
             if fn in documents_map:
                 documents_map[fn]["uploaded"] = formatted_date
@@ -151,40 +162,13 @@ def list_documents():
                     "name": fn,
                     "uploaded": formatted_date,
                     "chunks": 0,
-                    "status": "Pending" if fn.lower().endswith(".pdf") else "Unsupported",
+                    "status": "Pending" if is_supported else "Unsupported",
                 }
 
     return list(documents_map.values())
 
 
-@app.post("/api/chat", response_model=ChatResponse)
-def chat_endpoint(request: ChatRequest):
-    question = request.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
-
-    retriever: HybridRetriever = app.state.retriever
-    llm = app.state.llm
-
-    # Re-initialize LLM if it wasn't ready at startup
-    if llm is None or getattr(llm, "model", None) != NVIDIA_MODEL:
-        try:
-            llm = create_llm()
-            app.state.llm = llm
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"NVIDIA LLM not configured: {exc}"
-            )
-
-    try:
-        docs = retriever.invoke(question)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Retrieval error: {exc}"
-        )
-
+def _extract_source_previews(docs) -> List[dict]:
     sources = []
     seen = set()
     for doc in docs:
@@ -201,8 +185,40 @@ def chat_endpoint(request: ChatRequest):
             "page": page,
             "excerpt": preview,
         })
+    return sources
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat_endpoint(request: ChatRequest):
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    retriever: HybridRetriever = app.state.retriever
+    llm = app.state.llm
+
+    if llm is None or getattr(llm, "model", None) != NVIDIA_MODEL:
+        try:
+            llm = create_llm()
+            app.state.llm = llm
+        except Exception as exc:
+            if llm is None:
+                raise HTTPException(status_code=500, detail=f"NVIDIA LLM not configured: {exc}")
 
     mode = request.answer_mode if request.answer_mode in ALLOWED_MODES else "auto"
+    cache_key = f"{mode}:{question.lower()}"
+
+    # Check in-memory cache
+    if cache_key in query_cache:
+        cached_result = query_cache[cache_key]
+        return ChatResponse(answer=cached_result["answer"], sources=cached_result["sources"])
+
+    try:
+        docs = retriever.invoke(question)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Retrieval error: {exc}")
+
+    sources = _extract_source_previews(docs)
 
     try:
         answer = answer_question(
@@ -213,12 +229,88 @@ def chat_endpoint(request: ChatRequest):
             answer_mode=mode,
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Generation error: {exc}"
-        )
+        raise HTTPException(status_code=500, detail=f"Generation error: {exc}")
+
+    # Cache successful answer
+    query_cache[cache_key] = {"answer": answer, "sources": sources}
 
     return ChatResponse(answer=answer, sources=sources)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream_endpoint(request: ChatRequest):
+    """
+    Server-Sent Events (SSE) streaming endpoint.
+    Yields sources JSON event first, then streams token events in real time.
+    """
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    retriever: HybridRetriever = app.state.retriever
+    llm = app.state.llm
+
+    if llm is None or getattr(llm, "model", None) != NVIDIA_MODEL:
+        try:
+            llm = create_llm()
+            app.state.llm = llm
+        except Exception as exc:
+            if llm is None:
+                raise HTTPException(status_code=500, detail=f"NVIDIA LLM not configured: {exc}")
+
+    mode = request.answer_mode if request.answer_mode in ALLOWED_MODES else "auto"
+    cache_key = f"{mode}:{question.lower()}"
+
+    try:
+        docs = retriever.invoke(question)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Retrieval error: {exc}")
+
+    sources = _extract_source_previews(docs)
+
+    async def event_generator():
+        # 1. Send sources immediately
+        yield f"event: sources\ndata: {json.dumps(sources)}\n\n"
+
+        # 2. Check cache
+        if cache_key in query_cache:
+            cached_answer = query_cache[cache_key]["answer"]
+            yield f"event: token\ndata: {json.dumps({'delta': cached_answer})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+            return
+
+        # 3. Stream generated tokens
+        accumulated_chunks = []
+        try:
+            async for token in stream_answer_question(
+                llm,
+                question,
+                docs,
+                history=request.history,
+                answer_mode=mode,
+            ):
+                accumulated_chunks.append(token)
+                yield f"event: token\ndata: {json.dumps({'delta': token})}\n\n"
+        except Exception as exc:
+            logger.error(f"Error in stream generation: {exc}")
+            err_msg = f"Generation error: {exc}"
+            yield f"event: token\ndata: {json.dumps({'delta': err_msg})}\n\n"
+
+        full_answer = "".join(accumulated_chunks).strip()
+        if full_answer:
+            query_cache[cache_key] = {"answer": full_answer, "sources": sources}
+
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/upload")
@@ -248,10 +340,11 @@ async def upload_endpoint(files: List[UploadFile] = File(...)):
             })
             continue
 
-        # Ingest PDF files
-        if target_path.suffix.lower() == ".pdf":
+        # Ingest supported files (PDF, Word, PPTX, Excel, CSV, Text)
+        ext = target_path.suffix.lower()
+        if ext in SUPPORTED_EXTENSIONS:
             try:
-                count, status = ingest_pdf(target_path, store)
+                count, status = ingest_file(target_path, store)
                 results.append({
                     "name": file.filename,
                     "uploaded": datetime.datetime.now().strftime("%b %d, %Y"),
@@ -259,7 +352,7 @@ async def upload_endpoint(files: List[UploadFile] = File(...)):
                     "status": "Indexed" if count > 0 else "Empty",
                 })
             except Exception as exc:
-                print(f"[error] Failed to ingest {file.filename}: {exc}")
+                logger.error(f"Failed to ingest {file.filename}: {exc}")
                 results.append({
                     "name": file.filename,
                     "uploaded": datetime.datetime.now().strftime("%b %d, %Y"),
@@ -275,11 +368,14 @@ async def upload_endpoint(files: List[UploadFile] = File(...)):
                 "status": "Unsupported",
             })
 
+    # Clear query cache when new files are added
+    query_cache.clear()
+
     # Reload retriever index
     try:
         retriever.reload()
     except Exception as exc:
-        print(f"[warning] Retriever reload error: {exc}")
+        logger.warning(f"Retriever reload error: {exc}")
 
     return results
 
@@ -296,12 +392,15 @@ def delete_document(filename: str):
         try:
             file_path.unlink()
         except Exception as exc:
-            print(f"[warning] Could not remove file {filename} from disk: {exc}")
+            logger.warning(f"Could not remove file {filename} from disk: {exc}")
+
+    # Clear query cache when documents are deleted
+    query_cache.clear()
 
     try:
         retriever.reload()
     except Exception as exc:
-        print(f"[warning] Retriever reload error: {exc}")
+        logger.warning(f"Retriever reload error: {exc}")
 
     return {
         "success": True,

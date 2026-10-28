@@ -219,3 +219,71 @@ Student question:
         return "I couldn't generate an answer. Please try rephrasing your question."
 
     return cleaned_answer
+
+
+async def stream_answer_question(
+    llm,
+    question: str,
+    documents,
+    history: Optional[List[dict]] = None,
+    answer_mode: str = "auto",
+):
+    """Stream answer token by token using ChatNVIDIA.astream."""
+    trimmed_q = question.strip()
+    lower_q = trimmed_q.lower()
+
+    if lower_q in {"hi", "hello", "hey", "namaste", "good morning", "good evening", "good afternoon"}:
+        if not documents:
+            yield "Hello! I am your Campus AI study assistant. How can I help you prepare today? You can ask any question about your indexed course documents."
+            return
+
+    if not documents:
+        yield "This was not found in the indexed material. Please upload the relevant document or try asking with different keywords."
+        return
+
+    if answer_mode not in ALLOWED_MODES:
+        answer_mode = "auto"
+
+    mode_rule = MODE_INSTRUCTIONS.get(answer_mode, MODE_INSTRUCTIONS["auto"])
+    context_block = format_context(documents)
+    history_block = format_chat_history(history)
+
+    human_prompt = f"""Use ONLY the following context to answer the student's question.
+
+<context>
+{context_block}
+</context>
+
+{history_block}Instructions for this answer:
+{mode_rule}
+
+Student question:
+{trimmed_q}"""
+
+    messages = [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(content=human_prompt),
+    ]
+
+    try:
+        async for chunk in llm.astream(messages):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if token:
+                yield token
+    except Exception as exc:
+        logger.warning(f"[generation stream warning] Primary LLM stream failed: {exc}. Trying fallback...")
+        fallback_done = False
+        for fallback in ["nvidia/nemotron-3.5-bolt-e4b", "meta/llama-3.2-11b-vision-instruct"]:
+            try:
+                fallback_llm = create_llm(model_name=fallback)
+                async for chunk in fallback_llm.astream(messages):
+                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if token:
+                        yield token
+                fallback_done = True
+                break
+            except Exception as fb_exc:
+                logger.warning(f"[generation stream warning] Fallback {fallback} failed: {fb_exc}")
+
+        if not fallback_done:
+            yield "I encountered an error generating this answer. Please check your model configuration."

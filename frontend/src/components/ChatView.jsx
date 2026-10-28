@@ -178,6 +178,7 @@ export default function ChatView({
             );
           }
 
+          if (!msg.content && index === messages.length - 1) return null;
           return (
             <div key={index} className="msg assistant">
               <div className="role">

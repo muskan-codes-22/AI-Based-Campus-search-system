@@ -107,13 +107,13 @@ export default function UploadView({
           </div>
           <strong>Drop files here or choose files</strong>
           <span>Select one or more files from your computer</span>
-          <span className="formats">PDF, DOCX, TXT, MD, CSV &middot; up to 50 MB each</span>
+          <span className="formats">PDF, DOCX, PPTX, XLSX, CSV, TXT, MD &middot; up to 50 MB each</span>
 
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.docx,.txt,.md,.csv"
+            accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.txt,.md"
             onChange={handleFileInputChange}
           />
           <span className="btn secondary" style={{ marginTop: '8px', padding: '6px 14px', minHeight: 'unset', fontSize: '13px' }}>

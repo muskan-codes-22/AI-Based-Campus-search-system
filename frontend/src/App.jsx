@@ -75,7 +75,7 @@ export default function App() {
         if (last && last.role === 'assistant') {
           updated[updated.length - 1] = {
             ...last,
-            content: last.content || Error communicating with backend: ,
+            content: last.content || `Error communicating with backend: ${err.message}`,
           };
         }
         return updated;

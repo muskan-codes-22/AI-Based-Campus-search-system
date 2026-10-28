@@ -8,17 +8,43 @@ import {
   AlertCircle,
   Search,
   Trash2,
+  Plus,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
+function getFileBadge(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  switch (ext) {
+    case 'pdf':
+      return { label: 'PDF', bg: '#FEE2E2', color: '#DC2626' };
+    case 'docx':
+    case 'doc':
+      return { label: 'DOCX', bg: '#DBEAFE', color: '#2563EB' };
+    case 'pptx':
+    case 'ppt':
+      return { label: 'PPTX', bg: '#FFEDD5', color: '#EA580C' };
+    case 'xlsx':
+    case 'xls':
+      return { label: 'XLSX', bg: '#DCFCE7', color: '#16A34A' };
+    case 'csv':
+      return { label: 'CSV', bg: '#D1FAE5', color: '#059669' };
+    default:
+      return { label: ext.toUpperCase() || 'TXT', bg: '#F1F5F9', color: '#475569' };
+  }
+}
+
 export default function UploadView({
-  documents,
+  activeTab = 'documents',
+  documents = [],
   onIndexFiles,
   onRemoveDocument,
-  isIndexing,
+  isIndexing = false,
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showDropzone, setShowDropzone] = useState(activeTab === 'upload');
   const fileInputRef = useRef(null);
 
   const handleDrag = (e) => {
@@ -26,6 +52,7 @@ export default function UploadView({
     e.stopPropagation();
     if (e.type === 'dragenter' || e.type === 'dragover') {
       setDragActive(true);
+      setShowDropzone(true);
     } else if (e.type === 'dragleave') {
       setDragActive(false);
     }
@@ -53,6 +80,7 @@ export default function UploadView({
       const filtered = newFiles.filter((f) => !existingNames.has(f.name));
       return [...prev, ...filtered];
     });
+    setShowDropzone(true);
   };
 
   const removeSelectedFile = (name) => {
@@ -66,6 +94,9 @@ export default function UploadView({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    if (activeTab === 'documents') {
+      setShowDropzone(false);
+    }
   };
 
   const formatFileSize = (bytes) => {
@@ -73,110 +104,146 @@ export default function UploadView({
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
   const filteredDocs = documents.filter((doc) =>
-    doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (doc.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const totalChunks = documents.reduce((sum, d) => sum + (Number(d.chunks) || 0), 0);
+
+  const isUploadMode = activeTab === 'upload';
+
   return (
-    <section className="view view-upload">
+    <section className="view view-upload" onDragEnter={handleDrag}>
       <header className="topbar">
         <div className="topbar-left">
-          <h1>Upload</h1>
-          <span className="meta">Add documents to the index</span>
+          <h1>{isUploadMode ? 'Upload Documents' : 'Indexed Documents'}</h1>
+          <span className="meta">
+            {isUploadMode
+              ? 'Add new PDF, Word, PowerPoint, or Excel files to the campus knowledge base'
+              : `${documents.length} document${documents.length === 1 ? '' : 's'} (${totalChunks} chunks) indexed in persistent vector storage`}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {!isUploadMode && (
+            <button
+              type="button"
+              className={`btn ${showDropzone ? 'secondary' : 'primary'} sm`}
+              onClick={() => setShowDropzone(!showDropzone)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              {showDropzone ? (
+                <>
+                  <ChevronUp size={15} />
+                  <span>Hide Uploader</span>
+                </>
+              ) : (
+                <>
+                  <Plus size={15} />
+                  <span>Add Documents</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </header>
 
       <div className="upload-body">
-        <div className="section-head">
-          <h2>Add documents</h2>
-          <p>Files are split into chunks, embedded, and added to the collection.</p>
-        </div>
-
-        <label
-          className={`dropzone ${dragActive ? 'drag-active' : ''}`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <div className="dropzone-icon">
-            <UploadCloud size={24} />
-          </div>
-          <strong>Drop files here or choose files</strong>
-          <span>Select one or more files from your computer</span>
-          <span className="formats">PDF, DOCX, PPTX, XLSX, CSV, TXT, MD &middot; up to 50 MB each</span>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.txt,.md"
-            onChange={handleFileInputChange}
-          />
-          <span className="btn secondary" style={{ marginTop: '8px', padding: '6px 14px', minHeight: 'unset', fontSize: '13px' }}>
-            Browse files
-          </span>
-        </label>
-
-        {selectedFiles.length > 0 && (
-          <div className="staged-files">
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Pending Upload ({selectedFiles.length})
+        {/* Dropzone section: shown either in upload tab or when toggled in documents tab */}
+        {(showDropzone || isUploadMode || selectedFiles.length > 0) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '8px' }}>
+            <div className="section-head">
+              <h2>Add documents</h2>
+              <p>Files are parsed, split into chunks, embedded, and added to the collection.</p>
             </div>
-            {selectedFiles.map((f) => (
-              <div key={f.name} className="staged-file-item">
-                <div className="staged-file-info">
-                  <FileText size={16} />
-                  <span>{f.name}</span>
-                  <span className="staged-file-size">({formatFileSize(f.size)})</span>
-                </div>
-                <button
-                  type="button"
-                  className="btn ghost sm"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    removeSelectedFile(f.name);
-                  }}
-                  title="Remove from queue"
-                >
-                  <X size={14} />
-                </button>
+
+            <label
+              className={`dropzone ${dragActive ? 'drag-active' : ''}`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <div className="dropzone-icon">
+                <UploadCloud size={24} />
               </div>
-            ))}
+              <strong>Drop files here or choose files</strong>
+              <span>Select PDF, DOCX, PPTX, XLSX, CSV, or Text files from your computer</span>
+              <span className="formats">PDF, Word (DOCX), PowerPoint (PPTX), Excel (XLSX), CSV &middot; up to 50 MB each</span>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.txt,.md"
+                onChange={handleFileInputChange}
+              />
+              <span className="btn secondary" style={{ marginTop: '8px', padding: '6px 14px', minHeight: 'unset', fontSize: '13px' }}>
+                Browse files
+              </span>
+            </label>
+
+            {selectedFiles.length > 0 && (
+              <div className="staged-files">
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Pending Upload ({selectedFiles.length})
+                </div>
+                {selectedFiles.map((f) => (
+                  <div key={f.name} className="staged-file-item">
+                    <div className="staged-file-info">
+                      <FileText size={16} />
+                      <span>{f.name}</span>
+                      <span className="staged-file-size">({formatFileSize(f.size)})</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        removeSelectedFile(f.name);
+                      }}
+                      title="Remove from list"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="actions">
+              <span className="meta">
+                {selectedFiles.length === 0
+                  ? 'No files selected'
+                  : `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} ready to index`}
+              </span>
+              <button
+                className="btn primary"
+                type="button"
+                disabled={selectedFiles.length === 0 || isIndexing}
+                onClick={handleStartIndexing}
+              >
+                {isIndexing ? (
+                  <>
+                    <Loader2 size={16} className="spin-icon" style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>Indexing documents...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={16} />
+                    <span>Index documents</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
-        <div className="actions">
-          <span className="meta">
-            {selectedFiles.length === 0
-              ? 'No files selected'
-              : `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} ready to index`}
-          </span>
-          <button
-            className="btn"
-            type="button"
-            disabled={selectedFiles.length === 0 || isIndexing}
-            onClick={handleStartIndexing}
-          >
-            {isIndexing ? (
-              <>
-                <Loader2 size={16} className="spin-icon" style={{ animation: 'spin 1s linear infinite' }} />
-                <span>Indexing documents...</span>
-              </>
-            ) : (
-              <>
-                <UploadCloud size={16} />
-                <span>Index documents</span>
-              </>
-            )}
-          </button>
-        </div>
-
+        {/* Indexed documents section */}
         <div className="section-head" style={{ marginTop: '4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <h2>
               Indexed documents{' '}
               <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--muted)' }}>
@@ -197,6 +264,7 @@ export default function UploadView({
                   fontSize: '13px',
                   outline: 'none',
                   color: 'var(--text)',
+                  width: '220px',
                 }}
               />
             </div>
@@ -207,18 +275,18 @@ export default function UploadView({
           <table>
             <thead>
               <tr>
-                <th>File</th>
-                <th>Uploaded</th>
-                <th className="num">Chunks</th>
-                <th>Status</th>
-                <th style={{ width: '40px' }}></th>
+                <th style={{ width: '45%' }}>File</th>
+                <th style={{ width: '20%' }}>Uploaded</th>
+                <th className="num" style={{ width: '15%' }}>Chunks</th>
+                <th style={{ width: '15%' }}>Status</th>
+                <th style={{ width: '5%', textAlign: 'center' }}></th>
               </tr>
             </thead>
             <tbody>
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--faint)' }}>
-                    No indexed documents match your query.
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '32px', color: 'var(--faint)' }}>
+                    {searchQuery ? 'No indexed documents match your search.' : 'No documents indexed yet. Upload files to get started!'}
                   </td>
                 </tr>
               ) : (
@@ -232,23 +300,45 @@ export default function UploadView({
                     statusClass = 'failed';
                   }
 
+                  const badge = getFileBadge(doc.name);
+
                   return (
                     <tr key={doc.name}>
-                      <td className="file">{doc.name}</td>
-                      <td>{doc.uploaded}</td>
+                      <td className="file">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: badge.bg,
+                              color: badge.color,
+                              letterSpacing: '0.04em',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {badge.label}
+                          </span>
+                          <span style={{ fontWeight: 500, color: 'var(--navy)', wordBreak: 'break-all' }}>
+                            {doc.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ color: 'var(--muted)', fontSize: '13.5px' }}>{doc.uploaded}</td>
                       <td className="num">{doc.chunks !== null && doc.chunks !== undefined ? doc.chunks : '—'}</td>
                       <td>
                         <span className={`status ${statusClass}`}>{statusText}</span>
                       </td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <button
                           type="button"
                           className="btn ghost sm"
                           onClick={() => onRemoveDocument && onRemoveDocument(doc.name)}
                           title="Delete from index"
-                          style={{ padding: '4px', minHeight: 'unset' }}
+                          style={{ padding: '6px', minHeight: 'unset', color: '#94A3B8' }}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={15} />
                         </button>
                       </td>
                     </tr>

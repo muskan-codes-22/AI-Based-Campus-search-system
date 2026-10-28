@@ -148,6 +148,7 @@ export default function App() {
 
         {(activeTab === 'upload' || activeTab === 'documents') && (
           <UploadView
+            activeTab={activeTab}
             documents={documents}
             onIndexFiles={handleIndexFiles}
             onRemoveDocument={handleRemoveDocument}

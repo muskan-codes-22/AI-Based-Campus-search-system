@@ -2,11 +2,11 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export async function askQuestion(question, history = [], answerMode = 'auto') {
+export async function askQuestion(question, history = [], answerMode = 'auto', sessionId = 'default') {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, history, answer_mode: answerMode }),
+    body: JSON.stringify({ question, history, answer_mode: answerMode, session_id: sessionId }),
   });
 
   if (!res.ok) {
@@ -30,11 +30,23 @@ export async function askQuestion(question, history = [], answerMode = 'auto') {
  * Calls onSources(sourcesList) as soon as retrieval finishes.
  * Calls onToken(tokenString) as each token arrives from the LLM.
  */
-export async function askQuestionStream(question, history = [], answerMode = 'auto', onSources, onToken) {
+export async function askQuestionStream(
+  question,
+  history = [],
+  answerMode = 'auto',
+  onSources = null,
+  onToken = null,
+  sessionId = 'default'
+) {
   const res = await fetch(`${API_BASE}/api/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, history, answer_mode: answerMode }),
+    body: JSON.stringify({
+      question,
+      history,
+      answer_mode: answerMode,
+      session_id: sessionId,
+    }),
   });
 
   if (!res.ok) {
@@ -140,5 +152,35 @@ export async function fetchStats() {
   if (!res.ok) {
     throw new Error(`Failed to fetch stats: ${res.statusText}`);
   }
+  return await res.json();
+}
+
+export async function fetchSessions() {
+  const res = await fetch(`${API_BASE}/api/sessions`);
+  if (!res.ok) throw new Error('Failed to fetch sessions');
+  return await res.json();
+}
+
+export async function createSession(title = 'New Study Session', userName = 'Student') {
+  const res = await fetch(`${API_BASE}/api/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, user_name: userName }),
+  });
+  if (!res.ok) throw new Error('Failed to create session');
+  return await res.json();
+}
+
+export async function fetchSessionMessages(sessionId) {
+  const res = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+  if (!res.ok) throw new Error('Failed to fetch session messages');
+  return await res.json();
+}
+
+export async function deleteSession(sessionId) {
+  const res = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete session');
   return await res.json();
 }

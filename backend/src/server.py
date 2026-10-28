@@ -18,12 +18,14 @@ try:
     from .retrieval import HybridRetriever
     from .generation import create_llm, answer_question, stream_answer_question, ALLOWED_MODES
     from .ingest import ingest_file, delete_document_from_store, SUPPORTED_EXTENSIONS
+    from .db import list_sessions, create_session, delete_session, get_session_messages, add_message
 except ImportError:
     from config import DATA_DIR, COLLECTION_NAME, NVIDIA_MODEL
     from vector_store import get_vector_store
     from retrieval import HybridRetriever
     from generation import create_llm, answer_question, stream_answer_question, ALLOWED_MODES
     from ingest import ingest_file, delete_document_from_store, SUPPORTED_EXTENSIONS
+    from db import list_sessions, create_session, delete_session, get_session_messages, add_message
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ class ChatRequest(BaseModel):
     question: str
     history: Optional[List[dict]] = None
     answer_mode: Optional[str] = "auto"
+    session_id: Optional[str] = "default"
 
 
 class ChatResponse(BaseModel):
@@ -299,6 +302,12 @@ async def chat_stream_endpoint(request: ChatRequest):
         full_answer = "".join(accumulated_chunks).strip()
         if full_answer:
             query_cache[cache_key] = {"answer": full_answer, "sources": sources}
+            try:
+                session_id = request.session_id or "default"
+                add_message(session_id, "user", question)
+                add_message(session_id, "assistant", full_answer, sources)
+            except Exception as exc:
+                logger.warning(f"Failed to record stream message: {exc}")
 
         yield "event: done\ndata: {}\n\n"
 
@@ -407,3 +416,32 @@ def delete_document(filename: str):
         "filename": filename,
         "deleted_chunks": deleted_chunks,
     }
+
+
+class SessionCreateRequest(BaseModel):
+    title: Optional[str] = "New Study Session"
+    user_name: Optional[str] = "Student"
+
+
+@app.get("/api/sessions")
+def get_sessions_endpoint():
+    return list_sessions()
+
+
+@app.post("/api/sessions")
+def create_session_endpoint(req: SessionCreateRequest):
+    import uuid
+    session_id = f"session_{uuid.uuid4().hex[:8]}"
+    return create_session(session_id, title=req.title or "New Study Session", user_name=req.user_name or "Student")
+
+
+@app.get("/api/sessions/{session_id}/messages")
+def get_messages_endpoint(session_id: str):
+    return get_session_messages(session_id)
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session_endpoint(session_id: str):
+    delete_session(session_id)
+    return {"success": True, "session_id": session_id}
+

@@ -34,6 +34,8 @@ pnpm-debug.log*
 chroma_db/
 backend/chroma_db/
 *.sqlite3
+*.sqlite
+*.db
 
 # Uploaded / Ingested data files (preserve directory with .gitkeep)
 backend/data/*

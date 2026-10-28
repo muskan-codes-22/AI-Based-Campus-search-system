@@ -7,18 +7,20 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env from backend/ or project root
-load_dotenv(BASE_DIR / ".env")
-load_dotenv(BASE_DIR.parent / ".env")
+load_dotenv(BASE_DIR / ".env", override=True)
+load_dotenv(BASE_DIR.parent / ".env", override=True)
 
-DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
-CHROMA_DIR = Path(os.getenv("CHROMA_DIR", BASE_DIR / "chroma_db"))
+_data_raw = os.getenv("DATA_DIR", "data")
+DATA_DIR = Path(_data_raw) if Path(_data_raw).is_absolute() else (BASE_DIR / _data_raw).resolve()
+_chroma_raw = os.getenv("CHROMA_DIR", "chroma_db")
+CHROMA_DIR = Path(_chroma_raw) if Path(_chroma_raw).is_absolute() else (BASE_DIR / _chroma_raw).resolve()
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "pdf_knowledge_base")
 
 EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
 )
 NVIDIA_MODEL = os.getenv(
-    "NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"
+    "NVIDIA_MODEL", "nvidia/nemotron-3.5-bolt-e4b"
 )
 
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "700"))

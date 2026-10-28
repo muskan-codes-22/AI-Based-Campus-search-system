@@ -9,13 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 try:
-    from .config import DATA_DIR, COLLECTION_NAME
+    from .config import DATA_DIR, COLLECTION_NAME, NVIDIA_MODEL
     from .vector_store import get_vector_store
     from .retrieval import HybridRetriever
     from .generation import create_llm, answer_question, ALLOWED_MODES
     from .ingest import ingest_pdf, delete_document_from_store
 except ImportError:
-    from config import DATA_DIR, COLLECTION_NAME
+    from config import DATA_DIR, COLLECTION_NAME, NVIDIA_MODEL
     from vector_store import get_vector_store
     from retrieval import HybridRetriever
     from generation import create_llm, answer_question, ALLOWED_MODES
@@ -167,7 +167,7 @@ def chat_endpoint(request: ChatRequest):
     llm = app.state.llm
 
     # Re-initialize LLM if it wasn't ready at startup
-    if llm is None:
+    if llm is None or getattr(llm, "model", None) != NVIDIA_MODEL:
         try:
             llm = create_llm()
             app.state.llm = llm

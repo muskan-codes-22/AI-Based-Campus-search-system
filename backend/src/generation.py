@@ -93,7 +93,10 @@ def strip_thinking_tags(text: str) -> str:
         return ""
     cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text)
     cleaned = re.sub(r"<think>[\s\S]*$", "", cleaned)
-    return cleaned.strip()
+    cleaned = cleaned.strip()
+    if not cleaned and "<think>" in text:
+        cleaned = re.sub(r"</?think>", "", text).strip()
+    return cleaned
 
 
 def create_llm(model_name: Optional[str] = None) -> ChatNVIDIA:
@@ -108,7 +111,7 @@ def create_llm(model_name: Optional[str] = None) -> ChatNVIDIA:
         max_completion_tokens=2500,
     )
     if hasattr(llm, "_client"):
-        llm._client.timeout = 180
+        llm._client.timeout = 30
     return llm
 
 
@@ -195,7 +198,7 @@ Student question:
     except Exception as exc:
         logger.warning(f"[generation warning] Primary LLM failed ({exc}). Attempting fallback models...")
         response = None
-        for fallback in ["meta/llama-3.2-11b-vision-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b"]:
+        for fallback in ["nvidia/nemotron-3.5-bolt-e4b", "meta/llama-3.2-11b-vision-instruct"]:
             try:
                 fallback_llm = create_llm(model_name=fallback)
                 response = fallback_llm.invoke(messages)

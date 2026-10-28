@@ -96,14 +96,14 @@ def strip_thinking_tags(text: str) -> str:
     return cleaned.strip()
 
 
-def create_llm() -> ChatNVIDIA:
+def create_llm(model_name: Optional[str] = None) -> ChatNVIDIA:
     if not os.getenv("NVIDIA_API_KEY"):
         raise RuntimeError(
             "NVIDIA_API_KEY is missing. Check your .env file and ensure NVIDIA_API_KEY is defined."
         )
 
     llm = ChatNVIDIA(
-        model=NVIDIA_MODEL,
+        model=model_name or NVIDIA_MODEL,
         temperature=0.2,
         max_completion_tokens=2500,
     )
@@ -192,14 +192,27 @@ Student question:
 
     try:
         response = llm.invoke(messages)
-        raw_content = response.content if hasattr(response, "content") else str(response)
-        cleaned_answer = strip_thinking_tags(str(raw_content or "").strip())
-
-        if not cleaned_answer:
-            logger.warning("[generation] LLM returned empty content after stripping thinking tags.")
-            return "I couldn't generate an answer. Please try rephrasing your question."
-
-        return cleaned_answer
     except Exception as exc:
-        logger.error(f"[generation error] Error during LLM generation: {exc}", exc_info=True)
+        logger.warning(f"[generation warning] Primary LLM failed ({exc}). Attempting fallback models...")
+        response = None
+        for fallback in ["meta/llama-3.2-11b-vision-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b"]:
+            try:
+                fallback_llm = create_llm(model_name=fallback)
+                response = fallback_llm.invoke(messages)
+                logger.info(f"[generation] Successfully generated answer using fallback: {fallback}")
+                break
+            except Exception as fb_exc:
+                logger.warning(f"[generation warning] Fallback model {fallback} failed: {fb_exc}")
+
+        if response is None:
+            logger.error(f"[generation error] All LLM models failed: {exc}", exc_info=True)
+            return "I couldn't generate an answer due to an upstream model error. Please verify your NVIDIA API key and permissions."
+
+    raw_content = response.content if hasattr(response, "content") else str(response)
+    cleaned_answer = strip_thinking_tags(str(raw_content or "").strip())
+
+    if not cleaned_answer:
+        logger.warning("[generation] LLM returned empty content after stripping thinking tags.")
         return "I couldn't generate an answer. Please try rephrasing your question."
+
+    return cleaned_answer

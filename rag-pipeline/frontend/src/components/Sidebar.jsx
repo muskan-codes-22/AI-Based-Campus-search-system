@@ -1,11 +1,22 @@
 import React from 'react';
 import { GraduationCap, MessageSquare, FileText, History, UploadCloud } from 'lucide-react';
 
-export default function Sidebar({ activeTab, onSelectTab, docCount = 0, chunkCount = 0 }) {
+export default function Sidebar({
+  activeTab,
+  onSelectTab,
+  onBackToLanding,
+  docCount = 0,
+  chunkCount = 0,
+}) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-title">
+        <div
+          className="brand-title"
+          onClick={onBackToLanding}
+          style={{ cursor: onBackToLanding ? 'pointer' : 'default' }}
+          title={onBackToLanding ? 'Back to Landing Page' : undefined}
+        >
           <div className="brand-logo-wrap">
             <GraduationCap size={22} color="#ffffff" />
           </div>
@@ -14,6 +25,7 @@ export default function Sidebar({ activeTab, onSelectTab, docCount = 0, chunkCou
       </div>
 
       <nav className="nav" aria-label="Main Navigation">
+
         <button
           type="button"
           className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}

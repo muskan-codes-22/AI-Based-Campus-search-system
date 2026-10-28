@@ -12,19 +12,20 @@ try:
     from .config import DATA_DIR, COLLECTION_NAME
     from .vector_store import get_vector_store
     from .retrieval import HybridRetriever
-    from .generation import create_llm, answer_question
+    from .generation import create_llm, answer_question, ALLOWED_MODES
     from .ingest import ingest_pdf, delete_document_from_store
 except ImportError:
     from config import DATA_DIR, COLLECTION_NAME
     from vector_store import get_vector_store
     from retrieval import HybridRetriever
-    from generation import create_llm, answer_question
+    from generation import create_llm, answer_question, ALLOWED_MODES
     from ingest import ingest_pdf, delete_document_from_store
 
 
 class ChatRequest(BaseModel):
     question: str
     history: Optional[List[dict]] = None
+    answer_mode: Optional[str] = "auto"
 
 
 class ChatResponse(BaseModel):
@@ -201,8 +202,16 @@ def chat_endpoint(request: ChatRequest):
             "excerpt": preview,
         })
 
+    mode = request.answer_mode if request.answer_mode in ALLOWED_MODES else "auto"
+
     try:
-        answer = answer_question(llm, question, docs, history=request.history)
+        answer = answer_question(
+            llm,
+            question,
+            docs,
+            history=request.history,
+            answer_mode=mode,
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500,

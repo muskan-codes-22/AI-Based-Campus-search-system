@@ -16,12 +16,23 @@ import MarkdownMessage from './MarkdownMessage';
 import SourceCitation from './SourceCitation';
 
 
+const ANSWER_MODES = [
+  { id: 'auto', label: 'Auto', description: 'Auto-detect depth from question wording' },
+  { id: '2-marks', label: '2 marks', description: 'Definition + 1-2 supporting lines (no headings/tables)' },
+  { id: '5-marks', label: '5 marks', description: 'Definition, points/steps, and one small example' },
+  { id: '10-marks', label: '10 marks', description: 'Full exam answer with pseudocode and complexity table' },
+  { id: 'revision', label: 'Revision', description: 'Bullet key points only (30-second scan)' },
+  { id: 'compare', label: 'Compare', description: 'Markdown comparison table + takeaway' },
+];
+
 export default function ChatView({
   messages,
   onSendMessage,
   onClearChat,
   isLoading,
   collectionName = 'PDF Knowledge Base',
+  answerMode = 'auto',
+  onSelectAnswerMode,
 }) {
   const [input, setInput] = useState('');
   const threadEndRef = useRef(null);
@@ -81,9 +92,9 @@ export default function ChatView({
           <span className="meta">Collection: {collectionName}</span>
         </div>
         <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span className="assistant-mode-badge" title="Structured professional answers with Markdown, tables, code, and source citations">
+          <span className="assistant-mode-badge" title="Exam-oriented study assistant with marks-based answers and grounded citations">
             <Sparkles size={13} />
-            <span>Academic & Professional Mode</span>
+            <span>Exam & Study Mode</span>
           </span>
           {messages.length > 0 && (
             <button
@@ -199,46 +210,67 @@ export default function ChatView({
       </div>
 
       <div className="composer-wrapper">
-        <form onSubmit={handleSubmit} className="floating-composer-bar">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything about your campus documents..."
-            disabled={isLoading}
-            className="floating-composer-input"
-          />
-
-          <div className="floating-composer-actions">
-            <button
-              type="button"
-              className="action-icon-btn"
-              title="Voice input"
-              onClick={() => {}}
-            >
-              <Mic size={18} />
-            </button>
-            <button
-              type="button"
-              className="action-icon-btn"
-              title="Attach document"
-              onClick={() => {}}
-            >
-              <Paperclip size={18} />
-            </button>
-            <button
-              className="send-btn-indigo"
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              title="Send message"
-            >
-              <span>Send</span>
-              <ArrowRight size={15} />
-            </button>
+        <div className="composer-container">
+          <div className="answer-mode-bar" role="toolbar" aria-label="Exam Answer Modes">
+            <span className="mode-bar-label">Mode:</span>
+            {ANSWER_MODES.map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                className={`mode-chip ${answerMode === mode.id ? 'active' : ''}`}
+                onClick={() => onSelectAnswerMode && onSelectAnswerMode(mode.id)}
+                title={mode.description}
+              >
+                {mode.label}
+              </button>
+            ))}
           </div>
-        </form>
+
+          <form onSubmit={handleSubmit} className="floating-composer-bar">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask anything about your campus documents..."
+              disabled={isLoading}
+              className="floating-composer-input"
+            />
+
+            <div className="floating-composer-actions">
+              <button
+                type="button"
+                className="action-icon-btn"
+                title="Voice input"
+                onClick={() => {}}
+              >
+                <Mic size={18} />
+              </button>
+              <button
+                type="button"
+                className="action-icon-btn"
+                title="Attach document"
+                onClick={() => {}}
+              >
+                <Paperclip size={18} />
+              </button>
+              <button
+                className="send-btn-indigo"
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                title="Send message"
+              >
+                <span>Send</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </form>
+
+          <div className="composer-footer-note">
+            Grounded strictly in your indexed course materials • Exam-ready answers
+          </div>
+        </div>
       </div>
     </section>
   );

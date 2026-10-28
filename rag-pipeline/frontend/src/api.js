@@ -2,11 +2,11 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export async function askQuestion(question, history = []) {
+export async function askQuestion(question, history = [], answerMode = 'auto') {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, history }),
+    body: JSON.stringify({ question, history, answer_mode: answerMode }),
   });
 
   if (!res.ok) {

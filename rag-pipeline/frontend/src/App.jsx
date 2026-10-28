@@ -2,12 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import UploadView from './components/UploadView';
+import LandingPage from './LandingPage';
 import { askQuestion, uploadFiles, fetchDocuments, deleteDocument } from './api';
 
 export default function App() {
+  const [currentView, setCurrentView] = useState('landing');
   const [activeTab, setActiveTab] = useState('chat');
   const [isLoading, setIsLoading] = useState(false);
   const [isIndexing, setIsIndexing] = useState(false);
+  const [answerMode, setAnswerMode] = useState('auto');
   const [messages, setMessages] = useState([]);
   const [documents, setDocuments] = useState([]);
 
@@ -29,13 +32,14 @@ export default function App() {
   const totalChunks = documents.reduce((sum, doc) => sum + (Number(doc.chunks) || 0), 0);
   const totalDocs = documents.length;
 
-  const handleSendMessage = async (text) => {
+  const handleSendMessage = async (text, modeOverride) => {
+    const chosenMode = modeOverride || answerMode;
     const userMsg = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
     try {
-      const response = await askQuestion(text, messages);
+      const response = await askQuestion(text, messages, chosenMode);
       setMessages((prev) => [
         ...prev,
         {
@@ -85,11 +89,23 @@ export default function App() {
     }
   };
 
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onStartStudying={() => {
+          setCurrentView('app');
+          setActiveTab('chat');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        onBackToLanding={() => setCurrentView('landing')}
         docCount={totalDocs}
         chunkCount={totalChunks}
       />
@@ -102,6 +118,8 @@ export default function App() {
             onClearChat={handleClearChat}
             isLoading={isLoading}
             collectionName="PDF Knowledge Base"
+            answerMode={answerMode}
+            onSelectAnswerMode={setAnswerMode}
           />
         )}
 
